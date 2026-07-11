@@ -8,7 +8,7 @@ import BuyerDashboard from "./pages/BuyerDashboard";
 import CreateTrade from "./pages/CreateTrade";
 import TradeDetails from "./pages/TradeDetails";
 
-import "./App.css";
+
 
 function App() {
   return (
