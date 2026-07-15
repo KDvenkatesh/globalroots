@@ -34,7 +34,7 @@ if (typeof window !== "undefined") {
 export const networks = {
   testnet: {
     networkPassphrase: "Test SDF Network ; September 2015",
-    contractId: "CCBYXVGADBV3N5WEM5IKGGPPT4EWPKJ2LYBRGQEZIERR77RP6HOMMDSY",
+    contractId: "CBNEXEXZYSGDT3OOWJHWOEEZP6OP75UEANEPHSEXZE5PTYAP7HB5BAG6",
   }
 } as const
 
@@ -59,20 +59,50 @@ export type DataKey = {tag: "Trade", values: readonly [u64]};
 /**
  * Trade Status
  */
-export type TradeStatus = {tag: "Created", values: void};
+export type TradeStatus = {tag: "Created", values: void} | {tag: "Funded", values: void} | {tag: "Shipped", values: void} | {tag: "Delivered", values: void} | {tag: "Released", values: void} | {tag: "Cancelled", values: void};
 
 export interface Client {
   /**
    * Construct and simulate a get_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Read Trade
+   * Get Trade
    */
   get_trade: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<Trade>>
 
   /**
+   * Construct and simulate a fund_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Buyer funds escrow
+   */
+  fund_trade: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a ship_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Seller ships product
+   */
+  ship_trade: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a cancel_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Cancel trade
+   */
+  cancel_trade: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
    * Construct and simulate a create_trade transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Create a new Trade
+   * Create Trade
    */
   create_trade: ({trade_id, seller, buyer, product_name, amount}: {trade_id: u64, seller: string, buyer: string, product_name: string, amount: i128}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a release_payment transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Release escrow payment
+   */
+  release_payment: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
+
+  /**
+   * Construct and simulate a confirm_delivery transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   * Buyer confirms delivery
+   */
+  confirm_delivery: ({trade_id}: {trade_id: u64}, options?: MethodOptions) => Promise<AssembledTransaction<null>>
 
 }
 export class Client extends ContractClient {
@@ -94,14 +124,24 @@ export class Client extends ContractClient {
     super(
       new ContractSpec([ "AAAAAQAAAA9UcmFkZSBTdHJ1Y3R1cmUAAAAAAAAAAAVUcmFkZQAAAAAAAAYAAAAAAAAABmFtb3VudAAAAAAACwAAAAAAAAAFYnV5ZXIAAAAAAAATAAAAAAAAAAxwcm9kdWN0X25hbWUAAAAQAAAAAAAAAAZzZWxsZXIAAAAAABMAAAAAAAAABnN0YXR1cwAAAAAH0AAAAAtUcmFkZVN0YXR1cwAAAAAAAAAACHRyYWRlX2lkAAAABg==",
         "AAAAAgAAAAtTdG9yYWdlIEtleQAAAAAAAAAAB0RhdGFLZXkAAAAAAQAAAAEAAAAAAAAABVRyYWRlAAAAAAAAAQAAAAY=",
-        "AAAAAgAAAAxUcmFkZSBTdGF0dXMAAAAAAAAAC1RyYWRlU3RhdHVzAAAAAAEAAAAAAAAAAAAAAAdDcmVhdGVkAA==",
-        "AAAAAAAAAApSZWFkIFRyYWRlAAAAAAAJZ2V0X3RyYWRlAAAAAAAAAQAAAAAAAAAIdHJhZGVfaWQAAAAGAAAAAQAAB9AAAAAFVHJhZGUAAAA=",
-        "AAAAAAAAABJDcmVhdGUgYSBuZXcgVHJhZGUAAAAAAAxjcmVhdGVfdHJhZGUAAAAFAAAAAAAAAAh0cmFkZV9pZAAAAAYAAAAAAAAABnNlbGxlcgAAAAAAEwAAAAAAAAAFYnV5ZXIAAAAAAAATAAAAAAAAAAxwcm9kdWN0X25hbWUAAAAQAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAA" ]),
+        "AAAAAgAAAAxUcmFkZSBTdGF0dXMAAAAAAAAAC1RyYWRlU3RhdHVzAAAAAAYAAAAAAAAAAAAAAAdDcmVhdGVkAAAAAAAAAAAAAAAABkZ1bmRlZAAAAAAAAAAAAAAAAAAHU2hpcHBlZAAAAAAAAAAAAAAAAAlEZWxpdmVyZWQAAAAAAAAAAAAAAAAAAAhSZWxlYXNlZAAAAAAAAAAAAAAACUNhbmNlbGxlZAAAAA==",
+        "AAAAAAAAAAlHZXQgVHJhZGUAAAAAAAAJZ2V0X3RyYWRlAAAAAAAAAQAAAAAAAAAIdHJhZGVfaWQAAAAGAAAAAQAAB9AAAAAFVHJhZGUAAAA=",
+        "AAAAAAAAABJCdXllciBmdW5kcyBlc2Nyb3cAAAAAAApmdW5kX3RyYWRlAAAAAAABAAAAAAAAAAh0cmFkZV9pZAAAAAYAAAAA",
+        "AAAAAAAAABRTZWxsZXIgc2hpcHMgcHJvZHVjdAAAAApzaGlwX3RyYWRlAAAAAAABAAAAAAAAAAh0cmFkZV9pZAAAAAYAAAAA",
+        "AAAAAAAAAAxDYW5jZWwgdHJhZGUAAAAMY2FuY2VsX3RyYWRlAAAAAQAAAAAAAAAIdHJhZGVfaWQAAAAGAAAAAA==",
+        "AAAAAAAAAAxDcmVhdGUgVHJhZGUAAAAMY3JlYXRlX3RyYWRlAAAABQAAAAAAAAAIdHJhZGVfaWQAAAAGAAAAAAAAAAZzZWxsZXIAAAAAABMAAAAAAAAABWJ1eWVyAAAAAAAAEwAAAAAAAAAMcHJvZHVjdF9uYW1lAAAAEAAAAAAAAAAGYW1vdW50AAAAAAALAAAAAA==",
+        "AAAAAAAAABZSZWxlYXNlIGVzY3JvdyBwYXltZW50AAAAAAAPcmVsZWFzZV9wYXltZW50AAAAAAEAAAAAAAAACHRyYWRlX2lkAAAABgAAAAA=",
+        "AAAAAAAAABdCdXllciBjb25maXJtcyBkZWxpdmVyeQAAAAAQY29uZmlybV9kZWxpdmVyeQAAAAEAAAAAAAAACHRyYWRlX2lkAAAABgAAAAA=" ]),
       options
     )
   }
   public readonly fromJSON = {
     get_trade: this.txFromJSON<Trade>,
-        create_trade: this.txFromJSON<null>
+        fund_trade: this.txFromJSON<null>,
+        ship_trade: this.txFromJSON<null>,
+        cancel_trade: this.txFromJSON<null>,
+        create_trade: this.txFromJSON<null>,
+        release_payment: this.txFromJSON<null>,
+        confirm_delivery: this.txFromJSON<null>
   }
 }
