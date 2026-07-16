@@ -50,9 +50,9 @@ WalletConnect allows users to connect compatible mobile wallets by scanning a QR
 
 > Add your screenshot showing the Stellar Wallets Kit wallet selection modal here.
 
-<!--
-![Multi-Wallet Selection](./screenshots/wallet-options.png)
--->
+
+![Multi-Wallet Selection](./screenshots/Screenshot 2026-07-16 202932.png)
+
 
 <br><br>
 
@@ -61,7 +61,7 @@ WalletConnect allows users to connect compatible mobile wallets by scanning a QR
 > Add your screenshot showing the WalletConnect QR code here.
 
 <!--
-![WalletConnect QR](./screenshots/walletconnect-qr.png)
+![WalletConnect QR](./screenshots/Screenshot 2026-07-16 202947.png)
 -->
 
 ---
