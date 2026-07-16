@@ -5,6 +5,8 @@ import { useWallet } from "../hooks/useWallet";
 import StellarWalletsKit from "../wallet/walletKit";
 import type { Trade } from "bindings";
 
+type TxStatus = "idle" | "pending" | "success" | "failed";
+
 type TradeAction =
   | "fund"
   | "ship"
@@ -18,59 +20,112 @@ const TradeDetails = () => {
 
   const [trade, setTrade] = useState<Trade | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] =
-    useState<TradeAction | null>(null);
 
-  // ============================
-  // LOAD TRADE
-  // ============================
+  const [txStatus, setTxStatus] =
+    useState<TxStatus>("idle");
 
-  const loadTrade = async () => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
+  const [txMessage, setTxMessage] = useState("");
+
+  const loadTrade = async (showLoading = false) => {
+    if (!id) return;
 
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
 
       const tx = await contractClient.get_trade({
         trade_id: BigInt(id),
       });
 
-      console.log("Trade Data:", tx.result);
-
       setTrade(tx.result);
     } catch (error) {
       console.error("Load Trade Error:", error);
-      setTrade(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // Initial blockchain read
   useEffect(() => {
-    loadTrade();
+    loadTrade(true);
   }, [id]);
 
-  // ============================
-  // CONTRACT ACTION
-  // ============================
+  // Real-time synchronization
+  useEffect(() => {
+    if (!id) return;
+
+    const interval = setInterval(() => {
+      loadTrade(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [id]);
+
+  const handleError = (error: any) => {
+    console.error("Transaction Error:", error);
+
+    const message =
+      error?.message?.toLowerCase?.() || "";
+
+    setTxStatus("failed");
+
+    // ERROR 1
+    if (
+      message.includes("reject") ||
+      message.includes("declined") ||
+      message.includes("denied")
+    ) {
+      setTxMessage("Transaction rejected by user.");
+      return;
+    }
+
+    // ERROR 2
+    if (
+      message.includes("insufficient") ||
+      message.includes("balance")
+    ) {
+      setTxMessage(
+        "Insufficient wallet balance for this transaction."
+      );
+      return;
+    }
+
+    // ERROR 3
+    if (
+      message.includes("wallet") ||
+      message.includes("connect")
+    ) {
+      setTxMessage(
+        "Wallet connection error. Please reconnect your wallet."
+      );
+      return;
+    }
+
+    setTxMessage(
+      error?.message || "Transaction failed."
+    );
+  };
 
   const executeTradeAction = async (
     action: TradeAction
   ) => {
-    if (!id) {
-      return;
-    }
+    if (!id) return;
 
+    // ERROR 3
     if (!connected || !address) {
-      alert("Please connect your wallet first.");
+      setTxStatus("failed");
+      setTxMessage(
+        "Wallet not connected. Please connect your wallet."
+      );
       return;
     }
 
     try {
-      setActionLoading(action);
+      setTxStatus("pending");
+      setTxMessage(
+        "Transaction pending. Please approve it in your wallet..."
+      );
 
       const options = {
         publicKey: address,
@@ -129,8 +184,6 @@ const TradeDetails = () => {
           break;
       }
 
-      console.log("Transaction:", tx);
-
       const result = await tx.signAndSend();
 
       console.log(
@@ -138,41 +191,26 @@ const TradeDetails = () => {
         result
       );
 
-      alert("Transaction successful!");
+      setTxStatus("success");
+      setTxMessage(
+        "Transaction completed successfully."
+      );
 
-      await loadTrade();
+      await loadTrade(false);
     } catch (error: any) {
-      console.error(
-        "Trade Action Error:",
-        error
-      );
-
-      alert(
-        error?.message ||
-          "Transaction failed. Please try again."
-      );
-    } finally {
-      setActionLoading(null);
+      handleError(error);
     }
   };
-
-  // ============================
-  // LOADING
-  // ============================
 
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto py-20 text-center">
         <h2 className="text-xl font-semibold">
-          Loading trade...
+          Loading trade from Stellar...
         </h2>
       </div>
     );
   }
-
-  // ============================
-  // NOT FOUND
-  // ============================
 
   if (!trade) {
     return (
@@ -180,11 +218,6 @@ const TradeDetails = () => {
         <h1 className="text-3xl font-bold text-red-600">
           Trade Not Found
         </h1>
-
-        <p className="text-gray-500 mt-4">
-          This trade does not exist on the
-          blockchain.
-        </p>
       </div>
     );
   }
@@ -197,37 +230,52 @@ const TradeDetails = () => {
   const isSeller =
     address === trade.seller;
 
-  const isParticipant =
-    isBuyer || isSeller;
+  const isProcessing =
+    txStatus === "pending";
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
 
-      {/* HEADER */}
+      <h1 className="text-4xl font-bold">
+        Trade Details
+      </h1>
 
-      <div>
-        <h1 className="text-4xl font-bold">
-          Trade Details
-        </h1>
+      <p className="text-gray-500 mt-2">
+        Live Stellar smart contract trade tracking
+      </p>
 
-        <p className="text-gray-500 mt-2">
-          Manage the blockchain escrow
-          lifecycle.
-        </p>
-      </div>
+      {/* TRANSACTION STATUS */}
 
-      {/* TRADE CARD */}
+      {txStatus !== "idle" && (
+        <div
+          className={`mt-6 p-4 rounded-xl text-center font-semibold ${
+            txStatus === "pending"
+              ? "bg-yellow-100 text-yellow-700"
+              : txStatus === "success"
+                ? "bg-green-100 text-green-700"
+                : "bg-red-100 text-red-700"
+          }`}
+        >
+          {txStatus === "pending" &&
+            "⏳ PENDING — "}
+
+          {txStatus === "success" &&
+            "✅ SUCCESS — "}
+
+          {txStatus === "failed" &&
+            "❌ FAILED — "}
+
+          {txMessage}
+        </div>
+      )}
 
       <div className="mt-8 bg-white shadow-lg rounded-xl p-8">
 
-        {/* TOP */}
-
-        <div className="flex justify-between items-center gap-4">
+        <div className="flex justify-between items-center">
 
           <div>
             <p className="text-gray-500">
-              Trade #
-              {trade.trade_id.toString()}
+              Trade #{trade.trade_id.toString()}
             </p>
 
             <h2 className="text-2xl font-bold mt-1">
@@ -241,26 +289,24 @@ const TradeDetails = () => {
 
         </div>
 
-        {/* INFORMATION */}
-
         <div className="grid md:grid-cols-2 gap-6 mt-10">
 
           <div>
             <p className="text-gray-500">
-              Seller Wallet
+              Seller
             </p>
 
-            <p className="font-semibold break-all mt-1">
+            <p className="break-all font-semibold">
               {trade.seller}
             </p>
           </div>
 
           <div>
             <p className="text-gray-500">
-              Buyer Wallet
+              Buyer
             </p>
 
-            <p className="font-semibold break-all mt-1">
+            <p className="break-all font-semibold">
               {trade.buyer}
             </p>
           </div>
@@ -270,7 +316,7 @@ const TradeDetails = () => {
               Amount
             </p>
 
-            <p className="text-2xl font-bold mt-1">
+            <p className="text-2xl font-bold">
               {trade.amount.toString()} XLM
             </p>
           </div>
@@ -280,7 +326,7 @@ const TradeDetails = () => {
               Your Role
             </p>
 
-            <p className="font-semibold mt-1">
+            <p className="font-bold">
               {isBuyer
                 ? "Buyer"
                 : isSeller
@@ -291,163 +337,99 @@ const TradeDetails = () => {
 
         </div>
 
-        {/* ACTIONS */}
-
         <div className="mt-10">
-
-          {!connected && (
-            <p className="text-center text-red-500 mb-4">
-              Connect your wallet to perform
-              trade actions.
-            </p>
-          )}
-
-          {/* CREATED */}
 
           {status === "Created" &&
             isBuyer && (
               <button
+                disabled={isProcessing}
                 onClick={() =>
                   executeTradeAction("fund")
                 }
-                disabled={
-                  actionLoading !== null
-                }
-                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="w-full bg-blue-600 text-white py-3 rounded-lg disabled:opacity-50"
               >
-                {actionLoading === "fund"
-                  ? "Processing..."
-                  : "Fund Escrow"}
+                Fund Escrow
               </button>
             )}
-
-          {/* FUNDED */}
 
           {status === "Funded" &&
             isSeller && (
               <button
+                disabled={isProcessing}
                 onClick={() =>
                   executeTradeAction("ship")
                 }
-                disabled={
-                  actionLoading !== null
-                }
-                className="w-full bg-orange-600 text-white py-3 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                className="w-full bg-orange-600 text-white py-3 rounded-lg disabled:opacity-50"
               >
-                {actionLoading === "ship"
-                  ? "Processing..."
-                  : "Mark Product as Shipped"}
+                Mark as Shipped
               </button>
             )}
-
-          {/* SHIPPED */}
 
           {status === "Shipped" &&
             isBuyer && (
               <button
+                disabled={isProcessing}
                 onClick={() =>
                   executeTradeAction(
                     "confirm"
                   )
                 }
-                disabled={
-                  actionLoading !== null
-                }
-                className="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                className="w-full bg-purple-600 text-white py-3 rounded-lg disabled:opacity-50"
               >
-                {actionLoading === "confirm"
-                  ? "Processing..."
-                  : "Confirm Delivery"}
+                Confirm Delivery
               </button>
             )}
-
-          {/* DELIVERED */}
 
           {status === "Delivered" &&
             isBuyer && (
               <button
+                disabled={isProcessing}
                 onClick={() =>
                   executeTradeAction(
                     "release"
                   )
                 }
-                disabled={
-                  actionLoading !== null
-                }
-                className="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="w-full bg-green-600 text-white py-3 rounded-lg disabled:opacity-50"
               >
-                {actionLoading === "release"
-                  ? "Processing..."
-                  : "Release Payment"}
+                Release Payment
               </button>
             )}
 
-          {/* CANCEL */}
-
           {status === "Created" &&
-            isParticipant && (
+            (isBuyer || isSeller) && (
               <button
+                disabled={isProcessing}
                 onClick={() =>
                   executeTradeAction(
                     "cancel"
                   )
                 }
-                disabled={
-                  actionLoading !== null
-                }
-                className="w-full mt-4 border border-red-500 text-red-600 py-3 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                className="w-full mt-4 border border-red-500 text-red-600 py-3 rounded-lg disabled:opacity-50"
               >
-                {actionLoading === "cancel"
-                  ? "Cancelling..."
-                  : "Cancel Trade"}
+                Cancel Trade
               </button>
             )}
 
-          {/* RELEASED */}
-
           {status === "Released" && (
-            <div className="bg-green-100 text-green-700 p-4 rounded-lg text-center font-semibold">
-              Trade completed successfully ✓
+            <div className="bg-green-100 text-green-700 p-4 rounded-lg text-center font-bold">
+              ✅ Trade completed successfully
             </div>
           )}
-
-          {/* CANCELLED */}
 
           {status === "Cancelled" && (
-            <div className="bg-red-100 text-red-700 p-4 rounded-lg text-center font-semibold">
-              This trade has been cancelled.
+            <div className="bg-red-100 text-red-700 p-4 rounded-lg text-center font-bold">
+              ❌ Trade cancelled
             </div>
           )}
-
-          {/* WAITING STATES */}
-
-          {status === "Funded" &&
-            !isSeller && (
-              <div className="bg-orange-50 p-4 rounded-lg text-center">
-                Waiting for the seller to ship
-                the product.
-              </div>
-            )}
-
-          {status === "Shipped" &&
-            !isBuyer && (
-              <div className="bg-purple-50 p-4 rounded-lg text-center">
-                Waiting for the buyer to confirm
-                delivery.
-              </div>
-            )}
-
-          {status === "Delivered" &&
-            !isBuyer && (
-              <div className="bg-green-50 p-4 rounded-lg text-center">
-                Waiting for the buyer to release
-                payment.
-              </div>
-            )}
 
         </div>
 
       </div>
+
+      <p className="text-center text-gray-400 text-sm mt-5">
+        Blockchain state automatically synchronizes every
+        5 seconds
+      </p>
 
     </div>
   );
