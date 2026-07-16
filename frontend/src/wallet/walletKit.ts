@@ -10,23 +10,65 @@ import {
   WalletConnectTargetChain,
 } from "@creit.tech/stellar-wallets-kit/modules/wallet-connect";
 
+// ==============================
+// REOWN PROJECT ID
+// ==============================
+
+const projectId = import.meta.env.VITE_REOWN_PROJECT_ID;
+
+console.log("Reown Project ID:", projectId);
+
+if (!projectId) {
+  throw new Error(
+    "VITE_REOWN_PROJECT_ID is missing from frontend/.env"
+  );
+}
+
+// ==============================
+// WALLETCONNECT MODULE
+// ==============================
+
 const walletConnectModule = new WalletConnectModule({
-  projectId: import.meta.env.VITE_REOWN_PROJECT_ID,
+  projectId,
 
   metadata: {
     name: "GlobalRoots",
-    description: "Cross-border trade marketplace powered by Stellar",
+
+    description:
+      "Cross-border trade marketplace powered by Stellar",
+
     url: window.location.origin,
-    icons: [`${window.location.origin}/favicon.ico`],
+
+    icons: [
+      `${window.location.origin}/favicon.ico`,
+    ],
   },
 
-  allowedChains: [WalletConnectTargetChain.TESTNET],
+  allowedChains: [
+    WalletConnectTargetChain.TESTNET,
+  ],
 });
+
+// ==============================
+// DEFAULT WALLET MODULES
+// Remove default WalletConnect
+// because we configured our own.
+// ==============================
+
+const modules = defaultModules({
+  filterBy: (module) =>
+    module.productId !== "wallet_connect",
+});
+
+// ==============================
+// INITIALIZE STELLAR WALLETS KIT
+// ==============================
 
 StellarWalletsKit.init({
   network: Networks.TESTNET,
+
   modules: [
-    ...defaultModules(),
+    ...modules,
     walletConnectModule,
   ],
 });
